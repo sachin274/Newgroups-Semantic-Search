@@ -484,30 +484,13 @@ The isolated orange cluster (top-left) is the religion/Christianity cluster — 
 
 ---
 
-## Docker
+## Docker (Optional Bonus)
 
-```bash
-# Build image
-docker build -t newsgroups-search .
+Docker containerization has not been implemented yet.
+The application can be run using a Python virtual environment and started with a single `uvicorn` command as required.
 
-# Run with pre-built data mounted from host
-# (run prepare_data.py and build_clusters.py on host first)
-docker-compose up
-```
 
-The container starts Uvicorn on port 8000. Data and cache directories are mounted as volumes so the pre-built artefacts are available inside the container without rebuilding.
-
-```yaml
-# docker-compose.yml
-volumes:
-  - ./data:/app/data       # ChromaDB + embeddings
-  - ./cache:/app/cache     # SQLite cache
-  - ./visualizations:/app/visualizations
-```
-
----
-
-## Requirements
+## Requirements (venv)
 
 ```
 sentence-transformers==2.7.0
