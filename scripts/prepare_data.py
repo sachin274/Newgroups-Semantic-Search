@@ -30,9 +30,10 @@ import chromadb
 from chromadb.config import Settings
 
 # ── Config ────────────────────────────────────────────────────────────────────
-MAX_DOCS = 5000          # Set None to embed the full corpus (slow on CPU)
+MAX_DOCS = None          # Set None to embed the full corpus (slow on CPU)
 BATCH_SIZE = 64
-MODEL_NAME = "all-MiniLM-L6-v2"
+MODEL_NAME = "BAAI/bge-small-en-v1.5"
+QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages: "
 CHROMA_PATH = os.path.join(os.path.dirname(__file__), "..", "data", "chroma_db")
 META_PATH   = os.path.join(os.path.dirname(__file__), "..", "data", "doc_meta.json")
 EMB_PATH    = os.path.join(os.path.dirname(__file__), "..", "data", "embeddings.npy")
@@ -94,13 +95,13 @@ def load_and_clean():
 def embed_documents(docs):
     print(f"Loading embedding model: {MODEL_NAME} …")
     model = SentenceTransformer(MODEL_NAME)
-
-    print("Generating embeddings (this may take a few minutes on CPU) …")
+    print("Generating embeddings …")
+    # No prefix for documents
     embeddings = model.encode(
         docs,
-        batch_size=BATCH_SIZE,
+        batch_size=64,
         show_progress_bar=True,
-        normalize_embeddings=True,   # L2-normalise so cosine sim == dot product
+        normalize_embeddings=True,
         convert_to_numpy=True
     )
     return embeddings

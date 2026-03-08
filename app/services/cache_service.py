@@ -63,7 +63,7 @@ from contextlib import contextmanager
 
 # ── Config ────────────────────────────────────────────────────────────────────
 CACHE_DB_PATH    = os.path.join(os.path.dirname(__file__), "..", "..", "cache", "cache.db")
-SIMILARITY_THRESHOLD = 0.82   # Cosine similarity required for a cache hit
+SIMILARITY_THRESHOLD = 0.65   # Cosine similarity required for a cache hit
 MAX_ENTRIES      = 1000       # LRU eviction kicks in above this
 TTL_SECONDS      = 86400      # 24 hours
 TOP_K_CLUSTERS   = 3          # How many clusters to search during lookup

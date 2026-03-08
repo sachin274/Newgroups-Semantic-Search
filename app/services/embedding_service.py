@@ -1,40 +1,38 @@
-"""
-app/services/embedding_service.py
-==================================
-Singleton wrapper around SentenceTransformer.
-
-We load the model once at startup and reuse it for every request.
-Loading a 22M-parameter model takes ~1–2 seconds; doing it per-request
-would make the API unusably slow.
-"""
-
 from sentence_transformers import SentenceTransformer
 import numpy as np
 
-MODEL_NAME = "all-MiniLM-L6-v2"
+MODEL_NAME = "BAAI/bge-small-en-v1.5"
 
-# Module-level singleton — loaded once when the module is first imported
-_model: SentenceTransformer | None = None
+# BGE models use an instruction prefix for queries only.
+# This tells the model "this is a search query, find relevant passages"
+# Documents stored in ChromaDB do NOT get this prefix.
+QUERY_INSTRUCTION = "Represent this sentence for searching relevant passages: "
 
+_model = None
 
-def get_model() -> SentenceTransformer:
+def get_model():
     global _model
     if _model is None:
         _model = SentenceTransformer(MODEL_NAME)
     return _model
 
-
 def embed_query(text: str) -> np.ndarray:
-    """
-    Embed a single query string and return a normalised 384-dim vector.
-
-    Normalisation ensures that cosine_similarity(a, b) == dot(a, b),
-    which is faster and avoids a division operation in the cache lookup.
-    """
     model = get_model()
+    # Prefix only on the query side, not on stored documents
     vec = model.encode(
-        [text],
+        [QUERY_INSTRUCTION + text],
         normalize_embeddings=True,
         convert_to_numpy=True
     )
-    return vec[0]   # shape (384,)
+    return vec[0]
+
+def embed_documents(texts: list) -> np.ndarray:
+    model = get_model()
+    # No prefix for documents — BGE convention
+    return model.encode(
+        texts,
+        normalize_embeddings=True,
+        convert_to_numpy=True,
+        batch_size=64,
+        show_progress_bar=True
+    )

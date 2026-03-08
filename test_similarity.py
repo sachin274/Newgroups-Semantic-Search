@@ -2,7 +2,7 @@
 from sentence_transformers import SentenceTransformer
 import numpy as np
 
-model = SentenceTransformer("all-MiniLM-L6-v2")
+model = SentenceTransformer("BAAI/bge-small-en-v1.5")
 
 pairs = [
     # ── EASY (expect 0.80+) ─────────────────────────────────────────────

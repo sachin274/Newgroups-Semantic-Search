@@ -1,3 +1,4 @@
+
 """
 scripts/build_clusters.py
 =========================
@@ -32,13 +33,15 @@ import skfuzzy as fuzz
 import plotly.graph_objects as go
 import plotly.express as px
 import umap
+import nltk
+from nltk.stem import WordNetLemmatizer
 
 # ── Config ────────────────────────────────────────────────────────────────────
 N_CLUSTERS    = 15       # Justified by FPC elbow (see find_optimal_clusters)
-FUZZINESS_M   = 2.0      # Standard FCM fuzziness parameter
+FUZZINESS_M   = 2      # Standard FCM fuzziness parameter
 FCM_MAX_ITER  = 150
 FCM_ERROR     = 0.005
-BOUNDARY_THRESH = 0.15   # Max-membership below this → boundary document
+BOUNDARY_THRESH = 0.45   # Max-membership below this → boundary document
 UMAP_N_COMPONENTS = 2
 
 DATA_DIR  = os.path.join(os.path.dirname(__file__), "..", "data")
@@ -76,20 +79,48 @@ def find_optimal_clusters(embeddings_T, cluster_range=range(8, 22)):
     return fpc_scores
 
 
-def run_fuzzy_clustering(embeddings):
+def reduce_dimensions_for_clustering(embeddings, n_components=50):
     """
-    Run FCM. scikit-fuzzy expects data as (n_features, n_samples) — note the
-    transpose relative to sklearn convention.
+    Reduce 384-dim embeddings to 50 dims before clustering.
 
-    Returns:
-        cntr   : cluster centres  (n_clusters, n_features)
-        u      : membership matrix (n_clusters, n_samples)  — probabilities
+    Why 50 and not 2?
+    - 2 dims (used for visualisation) loses too much information for clustering.
+      FCM on 2-dim UMAP produces clusters based on visual layout, not full semantics.
+    - 50 dims retains ~95% of the semantic structure while making Euclidean
+      distance meaningful again. FCM uses Euclidean distance internally, which
+      breaks down in 384 dims (curse of dimensionality) but works well at 50.
+
+    Why UMAP and not PCA?
+    - PCA is linear — it finds directions of maximum variance but cannot
+      capture the curved, non-linear manifold that sentence embeddings live on.
+    - UMAP is non-linear and explicitly preserves neighbourhood structure,
+      so semantically similar documents remain close after reduction.
+    """
+    print(f"Reducing {embeddings.shape[1]}-dim embeddings to {n_components}-dim for clustering …")
+    reducer = umap.UMAP(
+        n_components=n_components,
+        n_neighbors=15,       # smaller than visualisation (30) — captures finer local structure
+        min_dist=0.0,         # 0.0 allows tighter packing, better for clustering than viz
+        metric='cosine',
+        random_state=42,
+        verbose=False
+    )
+    reduced = reducer.fit_transform(embeddings)
+    print(f"  Reduced shape: {reduced.shape}")
+    return reduced
+
+
+def run_fuzzy_clustering(embeddings_reduced):
+    """
+    Run FCM on the dimensionality-reduced embeddings (50-dim, not 384-dim).
+
+    The transpose convention: scikit-fuzzy expects (n_features, n_samples).
     """
     print(f"Running Fuzzy C-Means  C={N_CLUSTERS}  m={FUZZINESS_M} …")
-    embeddings_T = embeddings.T   # (384, n_docs)
+    data = embeddings_reduced.T   # (50, n_docs)
 
     cntr, u, u0, d, jm, p, fpc = fuzz.cluster.cmeans(
-        embeddings_T,
+        data,
         N_CLUSTERS,
         FUZZINESS_M,
         error=FCM_ERROR,
@@ -98,55 +129,74 @@ def run_fuzzy_clustering(embeddings):
         seed=42
     )
     print(f"  Converged  FPC={fpc:.4f}")
-    # u.T → (n_docs, n_clusters)  — each row sums to 1.0
+    # Higher FPC = better separated clusters. >0.5 is good, >0.7 is excellent.
+    # On raw 384-dim you were likely getting FPC ~0.07 (barely above 1/15 = random)
+    # On 50-dim you should see FPC ~0.4-0.6
     return cntr, u.T, fpc
 
 
 def extract_cluster_labels(docs_preview, memberships):
     """
-    For each cluster, collect the top-30 documents (by membership weight),
-    extract TF-IDF keywords, and form a 3-word label.
-
-    Key improvements over naive approach:
-    - Use top-30 docs per cluster (not 10) for richer vocabulary signal
-    - Filter out single-character tokens and purely numeric terms
-    - Use only unigrams (ngram_range=(1,1)) — bigrams often produce
-      unintelligible labels from short noisy newsgroup posts
-    - Fit TF-IDF on ALL docs so IDF penalises corpus-wide common words,
-      then score each cluster's representative docs against that IDF
+    Generates human-readable labels for each cluster using a weighted TF-IDF approach.
+    
+    The strategy focuses on 'Discriminative Labeling': identifying words that are
+    uniquely significant to a cluster while filtering out conversational noise
+    common in Usenet datasets.
     """
-    print("Extracting TF-IDF cluster labels …")
+    print("Extracting Enhanced TF-IDF cluster labels …")
     n_clusters = memberships.shape[1]
-    labels = {}
+    lemmatizer = WordNetLemmatizer()
+    
+    # 1. NOISE REDUCTION: Conversational 'Stop Words'
+    # In addition to standard English stop words, we filter out high-frequency 
+    # Usenet verbs and auxiliary words that add zero semantic value to a topic.
+    custom_stop = {'don', 'just', 'people', 'think', 'like', 'know', 'does', 'say', 'make', 'good', 'article'}
+    all_stop_words = list(custom_stop.union(TfidfVectorizer(stop_words='english').get_stop_words()))
 
-    # Fit on full corpus so IDF correctly penalises common words
+    # 2. MORPHOLOGICAL NORMALIZATION: Lemmatization
+    # We reduce words to their dictionary root (e.g., 'christians' -> 'christian').
+    # This prevents redundant labels and consolidates term frequency signals.
+    def clean_text(text):
+        tokens = text.lower().split()
+        # Filter for purely alphabetic tokens > 3 chars to remove technical 'junk' and numbers
+        return " ".join([lemmatizer.lemmatize(t) for t in tokens if t.isalpha() and len(t) > 3])
+
+    processed_docs = [clean_text(doc) for doc in docs_preview]
+
+    # 3. SEMANTIC FILTERING: Restrictive TF-IDF
+    # We limit max_df to ensure we don't pick words that are too common across the whole corpus.
+    # token_pattern ensures we capture meaningful English words for the final label.
     vectorizer = TfidfVectorizer(
-        max_features=10000,
-        stop_words='english',
-        ngram_range=(1, 1),       # unigrams only — more reliable for short docs
-        min_df=3,                 # ignore very rare terms
-        max_df=0.7,               # ignore terms that appear in >70% of docs
-        token_pattern=r'[a-zA-Z]{3,}'  # only alphabetic tokens ≥ 3 chars
+        max_features=8000,
+        stop_words=all_stop_words,
+        min_df=3,
+        max_df=0.5,           # If a word appears in >50% of docs, it is not a 'label'
+        token_pattern=r'[a-zA-Z]{3,}' 
     )
-    vectorizer.fit(docs_preview)
+    
+    # We fit on the ENTIRE corpus to establish a globally accurate IDF (Inverse Document Frequency).
+    # This ensures that common words are properly penalized across all clusters.
+    tfidf_matrix = vectorizer.fit_transform(processed_docs)
     terms = vectorizer.get_feature_names_out()
 
+    labels = {}
     for c in range(n_clusters):
+        # Retrieve fuzzy membership probabilities for this specific cluster
         weights = memberships[:, c]
-        # Take top-30 documents by cluster membership weight
+        
+        # We take the top-30 most 'representative' documents for this cluster core.
+        # This provides a dense vocabulary signal while ignoring outliers.
         top_idx = np.argsort(weights)[-30:]
-        cluster_docs = [docs_preview[i] for i in top_idx]
-        doc_weights = weights[top_idx]
-
-        tfidf_matrix = vectorizer.transform(cluster_docs)
-
-        # Weighted sum: documents with higher cluster membership contribute more
-        # to the final term scores, so the label reflects the cluster core
-        weighted_tfidf = np.asarray(tfidf_matrix.T.dot(doc_weights)).flatten()
-
-        top_term_idx = np.argsort(weighted_tfidf)[-3:][::-1]
-        top_terms = [terms[i] for i in top_term_idx]
-        labels[c] = " / ".join(top_terms)
+        cluster_tfidf = tfidf_matrix[top_idx].toarray()
+        
+        # WEIGHTED SUM: Document importance * Term TF-IDF score
+        # Since this is Fuzzy C-Means, we don't treat all docs as equal. 
+        # Documents with 90% membership contribute more to the label than those with 40%.
+        weighted_scores = np.dot(weights[top_idx], cluster_tfidf)
+        
+        # Select the top 3 terms with the highest cumulative weighted scores
+        top_term_idx = np.argsort(weighted_scores)[-3:][::-1]
+        labels[c] = " / ".join([terms[i] for i in top_term_idx])
         print(f"  Cluster {c:2d}: {labels[c]}")
 
     return labels
@@ -261,9 +311,8 @@ def build_interactive_visualization(projection, memberships, label_names_orig,
 def main():
     os.makedirs(VIZ_DIR, exist_ok=True)
 
-    # Load pre-computed artefacts
     print("Loading embeddings and metadata …")
-    embeddings = np.load(EMB_PATH)
+    embeddings = np.load(EMB_PATH)          # (n_docs, 384) — full embeddings
     with open(META_PATH) as f:
         meta = json.load(f)
 
@@ -271,21 +320,23 @@ def main():
     label_names  = meta["label_names"]
     docs_preview = meta["docs_preview"]
 
-    # ── Optional: run elbow analysis once to justify N_CLUSTERS ──────────────
-    # find_optimal_clusters(embeddings.T)
+    # ── Step 1: Reduce to 50 dims for clustering ──────────────────────────────
+    # This is the critical fix. FCM on raw 384-dim embeddings fails because
+    # Euclidean distance is meaningless in high dimensions — all points look
+    # equidistant from all centroids, producing uniform ~1/15 memberships.
+    embeddings_50d = reduce_dimensions_for_clustering(embeddings, n_components=50)
+    np.save(os.path.join(DATA_DIR, "embeddings_50d.npy"), embeddings_50d)
 
-    # ── Fuzzy Clustering ──────────────────────────────────────────────────────
-    cntr, memberships, fpc = run_fuzzy_clustering(embeddings)
-
-    # Save membership matrix — shape (n_docs, n_clusters)
+    # ── Step 2: Fuzzy clustering on 50-dim ────────────────────────────────────
+    cntr, memberships, fpc = run_fuzzy_clustering(embeddings_50d)
     np.save(CLUSTER_PATH, memberships)
-    print(f"  Memberships saved  shape={memberships.shape}")
+    print(f"  Memberships saved  shape={memberships.shape}  FPC={fpc:.4f}")
 
-    # ── Cluster Labels ────────────────────────────────────────────────────────
+    # ── Step 3: Cluster labels from full text ─────────────────────────────────
     cluster_labels = extract_cluster_labels(docs_preview, memberships)
 
-    # ── Boundary Documents ────────────────────────────────────────────────────
-    max_mem = np.max(memberships, axis=1)
+    # ── Step 4: Boundary document analysis ───────────────────────────────────
+    max_mem  = np.max(memberships, axis=1)
     dominant = np.argmax(memberships, axis=1)
     boundary_mask = max_mem < BOUNDARY_THRESH
     boundary_docs = [
@@ -297,8 +348,9 @@ def main():
         for i in np.where(boundary_mask)[0]
     ]
     print(f"  Boundary documents (max_mem < {BOUNDARY_THRESH}): {len(boundary_docs)}")
+    print(f"  Non-boundary (well-assigned): {len(doc_ids) - len(boundary_docs)}")
 
-    # ── Persist cluster metadata ──────────────────────────────────────────────
+    # ── Step 5: Persist cluster metadata ─────────────────────────────────────
     cluster_meta = {
         "n_clusters": N_CLUSTERS,
         "fuzziness_m": FUZZINESS_M,
@@ -307,14 +359,17 @@ def main():
         "boundary_threshold": BOUNDARY_THRESH,
         "n_boundary_docs": len(boundary_docs),
         "doc_dominant_cluster": {doc_ids[i]: int(dominant[i]) for i in range(len(doc_ids))},
-        "boundary_docs_sample": boundary_docs[:20]  # first 20 for the API
+        "boundary_docs_sample": boundary_docs[:20]
     }
     with open(CLUSTER_META_PATH, 'w') as f:
         json.dump(cluster_meta, f, indent=2)
     print(f"  Cluster meta saved → {CLUSTER_META_PATH}")
 
-    # ── UMAP + Visualisation ──────────────────────────────────────────────────
-    projection = build_umap_projection(embeddings)
+    # ── Step 6: UMAP to 2D for visualisation (separate from clustering UMAP) ──
+    # We run UMAP again to 2D specifically for the plot.
+    # The 50-dim UMAP above was for clustering quality.
+    # The 2-dim UMAP here is for human-readable visualisation.
+    projection = build_umap_projection(embeddings)   # uses original 384-dim
     np.save(os.path.join(DATA_DIR, "umap_projection.npy"), projection)
     build_interactive_visualization(
         projection, memberships, label_names, cluster_labels, doc_ids
