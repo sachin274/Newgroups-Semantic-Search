@@ -169,7 +169,7 @@ def extract_cluster_labels(docs_preview, memberships):
     vectorizer = TfidfVectorizer(
         max_features=8000,
         stop_words=all_stop_words,
-        min_df=3,
+        min_df=3,             # ignore words appearing in fewer than 3 documents
         max_df=0.5,           # If a word appears in >50% of docs, it is not a 'label'
         token_pattern=r'[a-zA-Z]{3,}' 
     )

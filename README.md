@@ -1,6 +1,6 @@
 # Newsgroups Semantic Search System
 
-A production-grade semantic search engine over the 20 Newsgroups corpus (~18,000 documents), featuring fuzzy clustering with UMAP dimensionality reduction, a first-principles SQLite semantic cache, and a FastAPI service — built for the Trademarkia AI/ML Engineer internship assignment.
+A production-grade semantic search engine over the 20 Newsgroups corpus (~18,000 documents), featuring fuzzy clustering with UMAP dimensionality reduction, a first-principles SQLite semantic cache, and a FastAPI service.
 
 ---
 
