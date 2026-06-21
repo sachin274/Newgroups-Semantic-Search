@@ -31,6 +31,16 @@ class QueryResponse(BaseModel):
     result:           list[SearchHit]
     dominant_cluster: int
     cluster_label:    str
+    retrieval_time_ms: float
+
+
+class BenchmarkResponse(BaseModel):
+    query:              str
+    cache_hit:          bool
+    cache_time_ms:      float
+    vector_db_time_ms:  float
+    cache_result:       list[SearchHit] | None = None
+    vector_db_result:   list[SearchHit]
 
 
 class CacheStats(BaseModel):
