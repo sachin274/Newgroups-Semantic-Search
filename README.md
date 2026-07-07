@@ -56,6 +56,34 @@ BGE model         centroid lookup     Python dict
 
 ---
 
+## See It In Action
+
+### Cache Miss — New Query
+
+Query: `"encryption and internet privacy"` — never seen before, so the cache has no match. The system hits ChromaDB and retrieves the top-5 documents from the `encryption / government / crypto` cluster. Retrieval time: **9.24ms** (vector DB search).
+
+![Cache miss — new query request](output/queryone-1.png)
+![Cache miss — response with top documents](output/queryone-2.png)
+
+---
+
+### Cache Hit — Similar Query
+
+Query: `"keeping your online data secure and private"` — semantically similar to the previous query. The cache finds a match with similarity score **0.7764** against `"encryption and internet privacy"` and returns the same results instantly. Retrieval time: **0.08ms** (dict lookup, no vector DB call).
+
+![Cache hit — similar query served from cache](output/querytwo-1.png)
+![Cache hit — retrieval time 0.08ms](output/querytwo-2.png)
+
+---
+
+### Cache Stats
+
+The `GET /cache/stats` endpoint shows the current state of the cache — 7 total entries, 4 hits, 3 misses, hit rate of 0.33, similarity threshold of 0.65.
+
+![Cache stats showing hit rate and entry count](output/cache-stats.png)
+
+---
+
 ## Offline Pipeline (run once)
 
 Before starting the server, two scripts prepare the data:
@@ -75,6 +103,14 @@ The two UMAP stages are independent — Stage 1 uses tight packing (`min_dist=0.
 
 ---
 
+## Cluster Visualization
+
+![UMAP 2D Cluster Visualization](plotly-visulaization.png)
+
+Each point is a document projected to 2D using UMAP. Colors represent the 15 topic clusters discovered by Fuzzy C-Means. Larger points indicate higher membership certainty. Small white dots are boundary documents that sit between two or more topics — the hover tooltip shows which clusters they partially belong to. An interactive HTML version is available at `visualizations/cluster_viz.html`.
+
+---
+
 ## API Endpoints
 
 | Method | Endpoint | Description |
@@ -83,30 +119,6 @@ The two UMAP stages are independent — Stage 1 uses tight packing (`min_dist=0.
 | `POST` | `/benchmark` | Runs both cache and ChromaDB, returns both timings |
 | `GET` | `/cache/stats` | Hit rate, entry count, threshold |
 | `DELETE` | `/cache` | Flush the cache |
-
-### POST /query — example
-
-```json
-// Request
-{ "query": "nasa space shuttle launch" }
-
-// Response (cache miss)
-{
-  "cache_hit": false,
-  "result": [{ "document": "...", "label_name": "sci.space", "similarity": 0.89 }],
-  "cluster_label": "space/launch/nasa",
-  "retrieval_time_ms": 9.0
-}
-
-// Response (cache hit — similar query later)
-{
-  "cache_hit": true,
-  "matched_query": "nasa space shuttle launch",
-  "similarity_score": 0.81,
-  "cluster_label": "space/launch/nasa",
-  "retrieval_time_ms": 3.2
-}
-```
 
 ---
 
@@ -128,14 +140,6 @@ uvicorn app.main:app --reload
 # API docs → http://localhost:8000/docs
 # Cluster visualization → open visualizations/cluster_viz.html
 ```
-
----
-
-## Cluster Visualization
-
-![UMAP 2D Cluster Visualization](plotly-visulaization.png)
-
-Each point is a document projected to 2D using UMAP. Colors represent the 15 topic clusters discovered by Fuzzy C-Means. Larger points indicate higher membership certainty — the document strongly belongs to that cluster. Small white dots are boundary documents that sit between two or more topics (e.g., the hover tooltip shows `doc_16996` split between "kind/agree/meant" and "right/civil/trial"). An interactive HTML version is available at `visualizations/cluster_viz.html`.
 
 ---
 
