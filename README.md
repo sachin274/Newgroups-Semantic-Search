@@ -129,11 +129,6 @@ uvicorn app.main:app --reload
 # Cluster visualization → open visualizations/cluster_viz.html
 ```
 
-Or with Docker:
-```bash
-docker-compose up
-```
-
 ---
 
 ## Tech Stack
