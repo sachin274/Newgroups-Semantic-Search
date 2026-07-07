@@ -18,10 +18,13 @@ the hood). For a production system you'd run them in a thread pool via
 simple and let Uvicorn handle the threading.
 """
 
+import time
+
 from fastapi import APIRouter, HTTPException
 
 from app.models.schemas import (
-    QueryRequest, QueryResponse, CacheStats, FlushResponse, SearchHit
+    QueryRequest, QueryResponse, CacheStats, FlushResponse, SearchHit,
+    BenchmarkResponse
 )
 from app.services import (
     embedding_service,
@@ -56,8 +59,11 @@ async def query(request: QueryRequest):
     )
     cluster_label = clustering_service.get_cluster_label(dominant_cluster)
 
-    # Step 3: Cache lookup (cluster-aware — only checks entries from nearby clusters)
+    # Step 3: Cache lookup
+    t0 = time.perf_counter()
     cached = cache_service.lookup(query_vec, cluster_ids=None)
+    retrieval_time_ms = round((time.perf_counter() - t0) * 1000, 2)
+
     if cached:
         return QueryResponse(
             query=query_text,
@@ -66,11 +72,14 @@ async def query(request: QueryRequest):
             similarity_score=cached["similarity_score"],
             result=[SearchHit(**h) for h in cached["result"]],
             dominant_cluster=cached["dominant_cluster"],
-            cluster_label=cluster_label
+            cluster_label=cluster_label,
+            retrieval_time_ms=retrieval_time_ms
         )
 
     # Step 4: Cache miss — run actual search
+    t0 = time.perf_counter()
     hits = vector_db_service.semantic_search(query_vec, n_results=5)
+    retrieval_time_ms = round((time.perf_counter() - t0) * 1000, 2)
 
     # Store in cache for future identical/similar queries
     cache_service.store(
@@ -87,7 +96,37 @@ async def query(request: QueryRequest):
         similarity_score=None,
         result=[SearchHit(**h) for h in hits],
         dominant_cluster=dominant_cluster,
-        cluster_label=cluster_label
+        cluster_label=cluster_label,
+        retrieval_time_ms=retrieval_time_ms
+    )
+
+
+@router.post("/benchmark", response_model=BenchmarkResponse)
+async def benchmark(request: QueryRequest):
+    """
+    Run the same query against both cache and ChromaDB and return both timings.
+    Useful for directly comparing cache hit speed vs vector DB search speed.
+    """
+    query_text = request.query.strip()
+    query_vec = embedding_service.embed_query(query_text)
+
+    # Time the cache lookup
+    t0 = time.perf_counter()
+    cached = cache_service.lookup(query_vec, cluster_ids=None)
+    cache_time_ms = round((time.perf_counter() - t0) * 1000, 2)
+
+    # Always time the vector DB search regardless of cache hit
+    t0 = time.perf_counter()
+    hits = vector_db_service.semantic_search(query_vec, n_results=5)
+    vector_db_time_ms = round((time.perf_counter() - t0) * 1000, 2)
+
+    return BenchmarkResponse(
+        query=query_text,
+        cache_hit=cached is not None,
+        cache_time_ms=cache_time_ms,
+        vector_db_time_ms=vector_db_time_ms,
+        cache_result=[SearchHit(**h) for h in cached["result"]] if cached else None,
+        vector_db_result=[SearchHit(**h) for h in hits]
     )
 
 
