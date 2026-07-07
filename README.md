@@ -131,6 +131,14 @@ uvicorn app.main:app --reload
 
 ---
 
+## Cluster Visualization
+
+![UMAP 2D Cluster Visualization](plotly-visulaization.png)
+
+Each point is a document projected to 2D using UMAP. Colors represent the 15 topic clusters discovered by Fuzzy C-Means. Larger points indicate higher membership certainty — the document strongly belongs to that cluster. Small white dots are boundary documents that sit between two or more topics (e.g., the hover tooltip shows `doc_16996` split between "kind/agree/meant" and "right/civil/trial"). An interactive HTML version is available at `visualizations/cluster_viz.html`.
+
+---
+
 ## Tech Stack
 
 | Component | Library |
