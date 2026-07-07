@@ -60,7 +60,7 @@ BGE model         centroid lookup     Python dict
 
 ### Cache Miss — New Query
 
-Query: `"encryption and internet privacy"` — never seen before, so the cache has no match. The system hits ChromaDB and retrieves the top-5 documents from the `encryption / government / crypto` cluster. Retrieval time: **9.24ms** (vector DB search).
+Query: `"encryption and internet privacy"` — never seen before, so the cache has no match. The system hits ChromaDB which searches all 16,781 documents and returns the top-5 most semantically similar results to the query. The cluster label `encryption / government / crypto` is metadata identifying which topic the query belongs to. Retrieval time: **9.24ms** (vector DB search).
 
 ![Cache miss — new query request](output/queryone-1.png)
 ![Cache miss — response with top documents](output/queryone-2.png)
