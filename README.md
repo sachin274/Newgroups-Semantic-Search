@@ -37,7 +37,7 @@ Query: `"encryption and internet privacy"` — semantically similar to the previ
 
 The `/benchmark` endpoint always runs both the cache lookup and ChromaDB search for the same query and returns both timings and both result sets. This lets you directly compare speed and verify whether the results agree.
 
-Query: `"why people reject the concept of God"` — already in the cache (`cache_hit: true`). Cache lookup: **0.09ms** vs ChromaDB HNSW search: **8.67ms**. On a cache hit, you see **Cache Results** (what the cache returned) followed by **Vector DB Results** (what ChromaDB found fresh for the same query). On a cache miss, only the Vector DB Results are shown since nothing is stored in the cache yet.
+Query: `"why people reject the concept of God"` — a similar query in the cache already exists (`cache_hit: true`). Cache lookup: **0.09ms** vs ChromaDB HNSW search: **8.67ms**. On a cache hit, you see **Cache Results** (what the cache returned) followed by **Vector DB Results** (what ChromaDB found fresh for the same query). On a cache miss, only the Vector DB Results are shown since nothing is stored in the cache yet.
 
 ![Benchmark — cache hit with both result sets](output/benchmark-1.png)
 ![](output/benchmark-2.png)
