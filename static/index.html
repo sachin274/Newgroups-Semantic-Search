@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Newsgroups Semantic Search</title>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+<div class="container">
+
+  <header>
+    <h1>Newsgroups Semantic Search</h1>
+    <p>Search across 18,000 newsgroup documents using semantic similarity</p>
+  </header>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('search')">Search</div>
+    <div class="tab" onclick="switchTab('benchmark')">Benchmark</div>
+    <div class="tab" onclick="switchTab('stats')">Cache Stats</div>
+  </div>
+
+  <!-- Search Panel -->
+  <div class="panel active" id="panel-search">
+    <div class="search-box">
+      <input type="text" id="queryInput" placeholder="e.g. nasa space shuttle launch…" />
+      <button class="btn" id="searchBtn" onclick="doSearch()">Search</button>
+    </div>
+    <div id="searchOutput">
+      <div class="empty">Type a query above to search<p>Results will appear here</p></div>
+    </div>
+  </div>
+
+  <!-- Benchmark Panel -->
+  <div class="panel" id="panel-benchmark">
+    <div class="search-box">
+      <input type="text" id="benchInput" placeholder="e.g. encryption and internet privacy…" />
+      <button class="btn" id="benchBtn" onclick="doBenchmark()">Run Benchmark</button>
+    </div>
+    <div id="benchOutput">
+      <div class="empty">Enter a query to compare cache vs ChromaDB timing<p>Both are run regardless of cache hit</p></div>
+    </div>
+  </div>
+
+  <!-- Cache Stats Panel -->
+  <div class="panel" id="panel-stats">
+    <div id="statsOutput">
+      <div class="loading">Loading cache stats…</div>
+    </div>
+    <div class="flush-row">
+      <button class="btn btn-outline" onclick="flushCache()">Flush Cache</button>
+    </div>
+  </div>
+
+</div>
+<script src="/static/app.js"></script>
+</body>
+</html>

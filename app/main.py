@@ -9,6 +9,8 @@ and cluster centroids so the first request doesn't pay the cold-start cost.
 
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from app.api.routes import router
 from app.services import cache_service, embedding_service, clustering_service
 import os
@@ -55,16 +57,15 @@ app = FastAPI(
     lifespan=lifespan
 )
 
+static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
+app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
 app.include_router(router)
 
 
-@app.get("/", tags=["health"])
-async def root():
-    return {
-        "status": "ok",
-        "message": "Newsgroups Semantic Search API",
-        "docs": "/docs"
-    }
+@app.get("/", tags=["ui"])
+async def serve_ui():
+    return FileResponse(os.path.join(static_dir, "index.html"))
 
 
 @app.get("/health", tags=["health"])

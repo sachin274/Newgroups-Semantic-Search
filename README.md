@@ -9,7 +9,7 @@ A semantic search engine over the 20 Newsgroups corpus (~18,000 documents). Type
 - **Semantic cache** — stores past query embeddings in a Python dict; if a new query is similar enough (cosine similarity ≥ 0.65), returns the cached result without touching the vector DB
 - **Two-stage UMAP + Fuzzy C-Means clustering** — groups documents into 15 soft topic clusters; each document gets a probability distribution over clusters, not a single hard assignment
 - **Retrieval timing** — every response includes `retrieval_time_ms` showing exactly how long the cache lookup or vector DB search took
-- **Benchmark endpoint** — runs both cache and ChromaDB for the same query and returns both timings side by side
+- **Benchmark endpoint** — runs both cache and ChromaDB for the same query and returns both timings and both result sets side by side
 
 ---
 
@@ -17,35 +17,39 @@ A semantic search engine over the 20 Newsgroups corpus (~18,000 documents). Type
 
 ### Cache Miss — New Query
 
-Query: `"encryption and internet privacy"` — never seen before, so the cache has no match. The system hits ChromaDB which searches all 16,781 documents and returns the top-5 most semantically similar results to the query. The cluster label `encryption / government / crypto` is metadata identifying which topic the query belongs to. Retrieval time: **9.24ms** (vector DB search).
+Query: `"keeping your online data secure and private"` — never seen before, so the cache has no match. The system hits ChromaDB which searches all 16,781 documents and returns the top-5 most semantically similar results. The cluster label `encryption / government / crypto` identifies which topic the query belongs to. Retrieval time: **8.51ms** (vector DB search).
 
-![Cache miss — new query request](output/queryone-1.png)
-![](output/queryone-2.png)
+![Cache miss — new query](output/queryone-one.png)
+![](output/queryone-two.png)
 
 ---
 
 ### Cache Hit — Similar Query
 
-Query: `"keeping your online data secure and private"` — semantically similar to the previous query. The cache finds a match with similarity score **0.7764** against `"encryption and internet privacy"` and returns the same results instantly without hitting ChromaDB at all. Retrieval time: **0.08ms** (dict lookup).
+Query: `"encryption and internet privacy"` — semantically similar to the previous query. The cache finds a match with similarity score **0.7764** against `"keeping your online data secure and private"` and returns the same results instantly without hitting ChromaDB at all. Retrieval time: **0.08ms** (dict lookup).
 
-![Cache hit — similar query served from cache](output/querytwo-1.png)
-![](output/querytwo-2.png)
+![Cache hit — similar query served from cache](output/querytwo-one.png)
+![](output/querytwo-two.png)
 
 ---
 
 ### Benchmark — Cache vs Vector DB Side by Side
 
-Query: `"NASA space shuttle launch"` — already in the cache (`cache_hit: true`). The `/benchmark` endpoint runs both the cache lookup and ChromaDB search for the same query and returns both timings. Cache lookup: **0.13ms** vs ChromaDB HNSW search: **17.04ms**. The cache result and vector DB result are identical, confirming the cache is returning the right documents.
+The `/benchmark` endpoint always runs both the cache lookup and ChromaDB search for the same query and returns both timings and both result sets. This lets you directly compare speed and verify whether the results agree.
 
-![Benchmark — cache vs vector DB timing comparison](output/benchmark.png)
+Query: `"why people reject the concept of God"` — already in the cache (`cache_hit: true`). Cache lookup: **0.09ms** vs ChromaDB HNSW search: **8.67ms**. On a cache hit, you see **Cache Results** (what the cache returned) followed by **Vector DB Results** (what ChromaDB found fresh for the same query). On a cache miss, only the Vector DB Results are shown since nothing is stored in the cache yet.
+
+![Benchmark — cache hit with both result sets](output/benchmark-1.png)
+![](output/benchmark-2.png)
+![](output/benchmark-3.png)
 
 ---
 
 ### Cache Stats
 
-The `GET /cache/stats` endpoint shows the current state of the cache — 7 total entries, 4 hits, 3 misses, hit rate of 0.33, similarity threshold of 0.65, max entries 1000, TTL 86400 seconds (24h).
+The `GET /cache/stats` endpoint shows the current state of the cache — 8 total entries, 3 hits, 8 misses, hit rate of 27%, similarity threshold of 0.65, max entries 1000, TTL 24h. A Flush Cache button wipes all entries and resets the counters.
 
-![Cache stats showing hit rate and entry count](output/cache-stats.png)
+![Cache stats dashboard](output/cache-stats.png)
 
 ---
 
@@ -71,7 +75,7 @@ BGE model         centroid lookup     Python dict
                                     cache miss ↓
                                VectorDBService
                                ChromaDB HNSW
-                               (~50–100ms)
+                               (~8–10ms)
 ```
 
 ---
@@ -86,7 +90,7 @@ BGE model         centroid lookup     Python dict
 
 3. **Cache lookup** — the query embedding is compared against all cached embeddings using cosine similarity. If the best match is ≥ 0.65, the cached result is returned immediately. Cache entries expire after 24h (TTL) and the oldest entries are evicted when the cache exceeds 1000 entries (LRU).
 
-4. **Vector DB search** *(cache miss only)* — ChromaDB searches all 16,781 documents using its HNSW index and returns the top-5 most semantically similar results to the query. Result is stored in the cache for future similar queries.
+4. **Vector DB search** *(cache miss only)* — ChromaDB searches all 16,781 documents using its HNSW index and returns the top-5 most semantically similar results. Result is stored in the cache for future similar queries.
 
 5. **Response** — returns matched documents, cluster label, cache hit/miss flag, and `retrieval_time_ms`.
 
@@ -115,7 +119,7 @@ The two UMAP stages are independent — Stage 1 uses tight packing (`min_dist=0.
 
 ![UMAP 2D Cluster Visualization](plotly-visulaization.png)
 
-Each point is a document projected to 2D using UMAP. Colors represent the 15 topic clusters discovered by Fuzzy C-Means. Larger points indicate higher membership certainty. Small white dots are boundary documents that sit between two or more topics — the hover tooltip shows which clusters they partially belong to. An interactive HTML version is available at `visualizations/cluster_viz.html`.
+Each point is a document projected to 2D using UMAP. Colors represent the 15 topic clusters discovered by Fuzzy C-Means. Larger points indicate higher membership certainty. Small white dots are boundary documents that sit between two or more topics. An interactive HTML version is available at `visualizations/cluster_viz.html`.
 
 ---
 
@@ -124,7 +128,7 @@ Each point is a document projected to 2D using UMAP. Colors represent the 15 top
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/query` | Search — returns top documents + `retrieval_time_ms` |
-| `POST` | `/benchmark` | Runs both cache and ChromaDB, returns both timings |
+| `POST` | `/benchmark` | Runs both cache and ChromaDB, returns both timings and results |
 | `GET` | `/cache/stats` | Hit rate, entry count, threshold |
 | `DELETE` | `/cache` | Flush the cache |
 
@@ -145,6 +149,7 @@ python scripts/build_clusters.py
 
 # Start server
 uvicorn app.main:app --reload
+# UI → http://localhost:8000
 # API docs → http://localhost:8000/docs
 # Cluster visualization → open visualizations/cluster_viz.html
 ```
