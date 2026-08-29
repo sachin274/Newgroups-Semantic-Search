@@ -47,12 +47,19 @@ def lookup(query_embedding: np.ndarray,
 
     Steps:
     1. Delete expired entries (lazy TTL).
-    2. Compute cosine similarity against all stored embeddings.
-    3. Return the best match if similarity >= SIMILARITY_THRESHOLD.
+    2. If cluster_ids is given, only compare against entries whose cluster_id
+       is in that list (cluster-narrowed scan) — otherwise scan every entry.
+    3. Compute cosine similarity against the candidate entries.
+    4. Return the best match if similarity >= SIMILARITY_THRESHOLD.
+
+    Narrowing by cluster_ids trades a small recall risk (a similar cached
+    query assigned to a cluster outside cluster_ids will be missed) for a
+    smaller scan — no fallback to a full scan is performed on a filtered miss.
     """
     global _hit_count, _miss_count
 
     now = time.time()
+    cluster_filter = set(cluster_ids) if cluster_ids is not None else None
 
     with _lock:
         # ── Lazy TTL expiry ────────────────────────────────────────────────
@@ -65,15 +72,21 @@ def lookup(query_embedding: np.ndarray,
             _miss_count += 1
             return None
 
-        # ── Cosine similarity against all entries ──────────────────────────
+        # ── Cosine similarity against candidate entries ─────────────────────
         best_sim = -1.0
         best_key = None
 
         for key, entry in _cache.items():
+            if cluster_filter is not None and entry["cluster_id"] not in cluster_filter:
+                continue
             sim = float(np.dot(query_embedding, entry["query_embedding"]))
             if sim > best_sim:
                 best_sim = sim
                 best_key = key
+
+        if best_key is None:
+            _miss_count += 1
+            return None
 
         if best_sim < SIMILARITY_THRESHOLD:
             _miss_count += 1

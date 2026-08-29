@@ -6,7 +6,7 @@ A semantic search engine over the 20 Newsgroups corpus (~18,000 documents). Type
 
 ## What Makes This More Than a Basic Vector Search
 
-- **Semantic cache** — stores past query embeddings in a Python dict; if a new query is similar enough (cosine similarity ≥ 0.65), returns the cached result without touching the vector DB
+- **Semantic cache with cluster-aware lookup** — stores past query embeddings in a Python dict, narrowed to the query's top-3 closest topic clusters before comparing similarity; if a new query is similar enough (cosine similarity ≥ 0.65) to a cached entry in those clusters, returns the cached result without touching the vector DB
 - **Two-stage UMAP + Fuzzy C-Means clustering** — groups documents into 15 soft topic clusters; each document gets a probability distribution over clusters, not a single hard assignment
 - **Retrieval timing** — every response includes `retrieval_time_ms` showing exactly how long the cache lookup or vector DB search took
 - **Benchmark endpoint** — runs both cache and ChromaDB for the same query and returns both timings and both result sets side by side
@@ -68,7 +68,8 @@ The `GET /cache/stats` endpoint shows the current state of the cache — 8 total
        ▼               ▼                  ▼
 EmbeddingService  ClusteringService   CacheService
 BGE model         centroid lookup     Python dict
-(~25ms)           (~1ms)              TTL + LRU
+(~25ms)           (~1ms)              cluster-aware lookup
+                                       (top-3 clusters) + TTL + LRU
                                            │
                                     cache hit? → return
                                            │
@@ -88,7 +89,7 @@ BGE model         centroid lookup     Python dict
 
 2. **Assign to clusters** — dot product against 15 pre-computed cluster centroids identifies which topic cluster the query belongs to (~1ms).
 
-3. **Cache lookup** — the query embedding is compared against all cached embeddings using cosine similarity. If the best match is ≥ 0.65, the cached result is returned immediately. Cache entries expire after 24h (TTL) and the oldest entries are evicted when the cache exceeds 1000 entries (LRU).
+3. **Cache lookup (cluster-aware)** — the cache scan is first narrowed to entries whose topic cluster is among the query's top-3 closest clusters, then the query embedding is compared against those candidates using cosine similarity. If the best match is ≥ 0.65, the cached result is returned immediately. Cache entries expire after 24h (TTL) and the oldest entries are evicted when the cache exceeds 1000 entries (LRU).
 
 4. **Vector DB search** *(cache miss only)* — ChromaDB searches all 16,781 documents using its HNSW index and returns the top-5 most semantically similar results. Result is stored in the cache for future similar queries.
 

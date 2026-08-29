@@ -59,9 +59,9 @@ async def query(request: QueryRequest):
     )
     cluster_label = clustering_service.get_cluster_label(dominant_cluster)
 
-    # Step 3: Cache lookup
+    # Step 3: Cache lookup (narrowed to the query's top-3 closest clusters)
     t0 = time.perf_counter()
-    cached = cache_service.lookup(query_vec, cluster_ids=None)
+    cached = cache_service.lookup(query_vec, cluster_ids=cluster_ids)
     retrieval_time_ms = round((time.perf_counter() - t0) * 1000, 2)
 
     if cached:
@@ -109,10 +109,13 @@ async def benchmark(request: QueryRequest):
     """
     query_text = request.query.strip()
     query_vec = embedding_service.embed_query(query_text)
+    cluster_ids = clustering_service.get_cluster_ids_sorted_by_similarity(
+        query_vec, top_k=3
+    )
 
-    # Time the cache lookup
+    # Time the cache lookup (same cluster-narrowed path as /query)
     t0 = time.perf_counter()
-    cached = cache_service.lookup(query_vec, cluster_ids=None)
+    cached = cache_service.lookup(query_vec, cluster_ids=cluster_ids)
     cache_time_ms = round((time.perf_counter() - t0) * 1000, 2)
 
     # Always time the vector DB search regardless of cache hit
