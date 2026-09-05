@@ -5,6 +5,6 @@ __pycache__/
 .env
 data/
 cache/
-visualizations/
+test_folder/
 *.egg-info/
 .DS_Store

@@ -108,19 +108,8 @@ prepare_data.py (~20 min)
 
 build_clusters.py (~5 min)
   UMAP 384-dim → 50-dim → Fuzzy C-Means (15 clusters) → TF-IDF cluster labels
-  UMAP 384-dim → 2-dim → interactive Plotly visualization
-  Output: cluster_memberships.npy, cluster_meta.json, cluster_viz.html
+  Output: cluster_memberships.npy, cluster_meta.json
 ```
-
-The two UMAP stages are independent — Stage 1 uses tight packing (`min_dist=0.0`) for clustering quality; Stage 2 uses balanced parameters (`min_dist=0.1`) for readable visualization.
-
----
-
-## Cluster Visualization
-
-![UMAP 2D Cluster Visualization](plotly-visulaization.png)
-
-Each point is a document projected to 2D using UMAP. Colors represent the 15 topic clusters discovered by Fuzzy C-Means. Larger points indicate higher membership certainty. Small white dots are boundary documents that sit between two or more topics. An interactive HTML version is available at `visualizations/cluster_viz.html`.
 
 ---
 
@@ -152,7 +141,6 @@ python scripts/build_clusters.py
 uvicorn app.main:app --reload
 # UI → http://localhost:8000
 # API docs → http://localhost:8000/docs
-# Cluster visualization → open visualizations/cluster_viz.html
 ```
 
 ---
@@ -167,4 +155,3 @@ uvicorn app.main:app --reload
 | Dim reduction | `umap-learn` |
 | Cache | Python `dict` — in-memory, TTL + LRU |
 | API | `fastapi` + `uvicorn` |
-| Visualization | `plotly` |

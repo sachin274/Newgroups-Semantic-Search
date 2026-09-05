@@ -7,7 +7,6 @@ scikit-fuzzy==0.4.2
 numpy==1.26.4
 scipy==1.13.0
 umap-learn==0.5.6
-plotly==5.22.0
 pandas==2.2.2
 tqdm==4.66.4
 python-dotenv==1.0.1

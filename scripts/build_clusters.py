@@ -2,9 +2,9 @@
 """
 scripts/build_clusters.py
 =========================
-Performs Fuzzy C-Means clustering on the pre-computed embeddings, generates
-UMAP visualisations, extracts cluster labels via TF-IDF, and persists cluster
-membership probabilities for use by the cache and API.
+Performs Fuzzy C-Means clustering on the pre-computed embeddings, extracts
+cluster labels via TF-IDF, and persists cluster membership probabilities for
+use by the cache and API.
 
 Key design decisions:
 - Fuzzy C-Means (FCM) over K-Means: a document about "gun legislation" should
@@ -30,8 +30,6 @@ import numpy as np
 from tqdm import tqdm
 from sklearn.feature_extraction.text import TfidfVectorizer
 import skfuzzy as fuzz
-import plotly.graph_objects as go
-import plotly.express as px
 import umap
 import nltk
 from nltk.stem import WordNetLemmatizer
@@ -42,10 +40,8 @@ FUZZINESS_M   = 2      # Standard FCM fuzziness parameter
 FCM_MAX_ITER  = 150
 FCM_ERROR     = 0.005
 BOUNDARY_THRESH = 0.45   # Max-membership below this → boundary document
-UMAP_N_COMPONENTS = 2
 
 DATA_DIR  = os.path.join(os.path.dirname(__file__), "..", "data")
-VIZ_DIR   = os.path.join(os.path.dirname(__file__), "..", "visualizations")
 EMB_PATH  = os.path.join(DATA_DIR, "embeddings.npy")
 META_PATH = os.path.join(DATA_DIR, "doc_meta.json")
 CLUSTER_PATH = os.path.join(DATA_DIR, "cluster_memberships.npy")  # shape (n_docs, n_clusters)
@@ -83,9 +79,7 @@ def reduce_dimensions_for_clustering(embeddings, n_components=50):
     """
     Reduce 384-dim embeddings to 50 dims before clustering.
 
-    Why 50 and not 2?
-    - 2 dims (used for visualisation) loses too much information for clustering.
-      FCM on 2-dim UMAP produces clusters based on visual layout, not full semantics.
+    Why 50?
     - 50 dims retains ~95% of the semantic structure while making Euclidean
       distance meaningful again. FCM uses Euclidean distance internally, which
       breaks down in 384 dims (curse of dimensionality) but works well at 50.
@@ -99,8 +93,8 @@ def reduce_dimensions_for_clustering(embeddings, n_components=50):
     print(f"Reducing {embeddings.shape[1]}-dim embeddings to {n_components}-dim for clustering …")
     reducer = umap.UMAP(
         n_components=n_components,
-        n_neighbors=15,       # smaller than visualisation (30) — captures finer local structure
-        min_dist=0.0,         # 0.0 allows tighter packing, better for clustering than viz
+        n_neighbors=15,
+        min_dist=0.0,         # 0.0 allows tighter packing, better for clustering
         metric='cosine',
         random_state=42,
         verbose=False
@@ -202,122 +196,13 @@ def extract_cluster_labels(docs_preview, memberships):
     return labels
 
 
-def build_umap_projection(embeddings):
-    """
-    Reduce 384-dim embeddings to 2D for visualisation.
-
-    UMAP parameters:
-    - n_neighbors=30: balances local vs global structure. Smaller → more
-      local detail; larger → smoother global topology.
-    - min_dist=0.1: controls how tightly points are packed. 0.1 is a good
-      default for showing cluster separation.
-    - metric='cosine': consistent with our similarity metric elsewhere.
-    """
-    print("Running UMAP dimensionality reduction …")
-    reducer = umap.UMAP(
-        n_components=UMAP_N_COMPONENTS,
-        n_neighbors=30,
-        min_dist=0.1,
-        metric='cosine',
-        random_state=42,
-        verbose=False
-    )
-    projection = reducer.fit_transform(embeddings)
-    return projection
-
-
-def build_interactive_visualization(projection, memberships, label_names_orig,
-                                    cluster_labels, doc_ids):
-    """
-    Build an interactive Plotly scatter plot showing:
-    1. Dominant cluster colour per document
-    2. Marker size ∝ certainty (large = confident, small = ambiguous)
-    3. Hover showing top-2 cluster memberships → reveals fuzzy boundaries
-    """
-    print("Building interactive cluster visualisation …")
-    n_docs = len(doc_ids)
-    dominant = np.argmax(memberships, axis=1)
-    max_membership = np.max(memberships, axis=1)
-
-    # Identify boundary documents
-    is_boundary = max_membership < BOUNDARY_THRESH
-
-    hover_texts = []
-    for i in range(n_docs):
-        top2 = np.argsort(memberships[i])[-2:][::-1]
-        parts = [f"C{c}: {memberships[i,c]:.2f} ({cluster_labels.get(c,'?')})"
-                 for c in top2]
-        boundary_tag = " ⚠ BOUNDARY" if is_boundary[i] else ""
-        hover_texts.append(
-            f"{doc_ids[i]}{boundary_tag}<br>" + "<br>".join(parts)
-        )
-
-    colors = px.colors.qualitative.Alphabet[:N_CLUSTERS]
-    marker_colors = [colors[d % len(colors)] for d in dominant]
-
-    fig = go.Figure()
-
-    # Main scatter
-    fig.add_trace(go.Scatter(
-        x=projection[:, 0],
-        y=projection[:, 1],
-        mode='markers',
-        marker=dict(
-            color=marker_colors,
-            size=6 + 10 * max_membership,   # size ∝ certainty
-            opacity=0.7,
-            line=dict(width=0)
-        ),
-        text=hover_texts,
-        hovertemplate='%{text}<extra></extra>',
-        name='Documents'
-    ))
-
-    # Highlight boundary documents
-    boundary_idx = np.where(is_boundary)[0]
-    if len(boundary_idx) > 0:
-        fig.add_trace(go.Scatter(
-            x=projection[boundary_idx, 0],
-            y=projection[boundary_idx, 1],
-            mode='markers',
-            marker=dict(
-                color='white',
-                size=3,
-                symbol='x',
-                opacity=0.4
-            ),
-            text=[hover_texts[i] for i in boundary_idx],
-            hovertemplate='%{text}<extra></extra>',
-            name='Boundary docs'
-        ))
-
-    fig.update_layout(
-        title="20 Newsgroups — Fuzzy Cluster Visualisation (UMAP 2D)",
-        xaxis_title="UMAP-1",
-        yaxis_title="UMAP-2",
-        legend_title="Legend",
-        width=1100,
-        height=750,
-        template="plotly_dark",
-        hoverlabel=dict(font_size=11)
-    )
-
-    out_path = os.path.join(VIZ_DIR, "cluster_viz.html")
-    fig.write_html(out_path)
-    print(f"  Visualisation saved → {out_path}")
-    return out_path
-
-
 def main():
-    os.makedirs(VIZ_DIR, exist_ok=True)
-
     print("Loading embeddings and metadata …")
     embeddings = np.load(EMB_PATH)          # (n_docs, 384) — full embeddings
     with open(META_PATH) as f:
         meta = json.load(f)
 
     doc_ids      = meta["doc_ids"]
-    label_names  = meta["label_names"]
     docs_preview = meta["docs_preview"]
 
     # ── Step 1: Reduce to 50 dims for clustering ──────────────────────────────
@@ -364,16 +249,6 @@ def main():
     with open(CLUSTER_META_PATH, 'w') as f:
         json.dump(cluster_meta, f, indent=2)
     print(f"  Cluster meta saved → {CLUSTER_META_PATH}")
-
-    # ── Step 6: UMAP to 2D for visualisation (separate from clustering UMAP) ──
-    # We run UMAP again to 2D specifically for the plot.
-    # The 50-dim UMAP above was for clustering quality.
-    # The 2-dim UMAP here is for human-readable visualisation.
-    projection = build_umap_projection(embeddings)   # uses original 384-dim
-    np.save(os.path.join(DATA_DIR, "umap_projection.npy"), projection)
-    build_interactive_visualization(
-        projection, memberships, label_names, cluster_labels, doc_ids
-    )
 
     print("\n✓ Clustering complete. Start the API with: uvicorn app.main:app --reload")
 
