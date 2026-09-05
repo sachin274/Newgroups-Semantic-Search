@@ -7,7 +7,7 @@ A semantic search engine over the 20 Newsgroups corpus (~18,000 documents). Type
 ## What Makes This More Than a Basic Vector Search
 
 - **Semantic cache with cluster-aware lookup** — stores past query embeddings in a Python dict, narrowed to the query's top-3 closest topic clusters before comparing similarity; if a new query is similar enough (cosine similarity ≥ 0.65) to a cached entry in those clusters, returns the cached result without touching the vector DB
-- **Two-stage UMAP + Fuzzy C-Means clustering** — groups documents into 15 soft topic clusters; each document gets a probability distribution over clusters, not a single hard assignment
+- **UMAP + Fuzzy C-Means clustering** — groups documents into 15 soft topic clusters; each document gets a probability distribution over clusters, not a single hard assignment
 - **Retrieval timing** — every response includes `retrieval_time_ms` showing exactly how long the cache lookup or vector DB search took
 - **Benchmark endpoint** — runs both cache and ChromaDB for the same query and returns both timings and both result sets side by side
 
